@@ -172,8 +172,8 @@ Names used in the code:
 - The optimiser (differential evolution) uses fixed random seeds, so a rerun gives the same
   numbers.
 - Figs. 2-4 also write the numbers they plot, as CSV files next to the figure.
-- Figs. 2-4 of the paper were drawn with matplotlib 3.10, the others with 3.11. Another
-  version can place text a pixel differently; the data drawn are the same.
+- Figs. 3 and 4 of the paper were drawn with matplotlib 3.10, the others with 3.11.
+  Another version can place text a pixel differently; the data drawn are the same.
 - A fit with fewer trials (`n_trials` in `phantom_dma/analyses.py`) is faster but less robust.
   The window screens use three trials and are indicative only, as stated in the SI.
 

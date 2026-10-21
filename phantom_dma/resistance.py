@@ -121,11 +121,6 @@ def p45b_cc_step(cell, rpt, step):
     return b
 
 
-def p45b_capacity(cell, rpt, step=8):
-    """C/20 discharge capacity (Ah) of one P45B cell at one RPT."""
-    return float(p45b_cc_step(cell, rpt, step)["dQ"].sum())
-
-
 def p45b_pulse_resistance(cell, rpt):
     """R_0.1s (mOhm) of the 1C, 30 s discharge pulses of one P45B cell, in test order
     (70, 50 and 30 % SOC)."""

@@ -6,10 +6,14 @@
     starts to rise at low SOC (R above the mid-SOC mean + 3 standard
     deviations); its error bars span both cells and thresholds of 2 to 4
     standard deviations. Hatched: pulses cut short by the 2.5 V limit (not shown).
-(b) Molicel P45B. R_0.1s of the 1C pulses at 70, 50 and 30 % SOC, same colours.
+(b) Molicel P45B. R_0.1s of the 1C pulses at 70, 50 and 30 % SOC, same colours,
+    at all seven RPTs (0 to 500 cycles).
 
-Every tile is the mean of the two cells. The row above each panel gives half
-the range of the two cells (the largest value in that column).
+Every tile is the mean of the two cells. The first row above each panel gives the
+state of health: the low-rate pOCV discharge capacity (C/10 for the LG M50T, C/20
+for the P45B) relative to the first RPT, mean of the two cells. This is the
+capacity the degradation modes are fitted to (Figs. 5 and 6). The second row
+gives half the range of the two cells (the largest value in that column).
 
 Needs: the LG M50T GITT files and the P45B data (paths.py).
 Run:   python figures/fig2_resistance.py
@@ -33,13 +37,13 @@ from matplotlib.legend_handler import HandlerTuple
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
 
-from phantom_dma.data import M50T_PULSE_RPTS
-from phantom_dma.resistance import m50t_pulses, p45b_capacity, p45b_pulse_resistance
+from phantom_dma.data import M50T_PULSE_RPTS, m50t_curve, p45b_curve
+from phantom_dma.resistance import m50t_pulses, p45b_pulse_resistance
 
 # LG M50T: cell2 ("E" in Kirkaldy et al.) is listed first; it is the cell used in Fig. 3.
 M50T_CELLS = {"cell2": "E", "cell1": "D"}
 P45B_CELLS = ["cell1", "cell2"]
-P45B_RPTS = [0, 50, 100, 200, 300, 500]   # RPTs shown in panel (b)
+P45B_RPTS = [0, 50, 100, 200, 300, 400, 500]   # RPTs shown in panel (b)
 P45B_PULSE_SOC = [70, 50, 30]             # SOC (%) of the three pulses, in test order
 CYCLES_PER_M50T_RPT = 78                  # ageing cycles between two M50T tests
 ONSET_SIGMA = 3.0                         # threshold for the low-SOC onset (line)
@@ -55,6 +59,19 @@ CMAP.set_under("#FFFFFF")
 CMAP.set_over("#0A0F33")
 NORM = BoundaryNorm(BINS, CMAP.N)
 TILE_WIDTH = 0.84
+
+
+def pocv_capacity(cell_type, cell, rpt):
+    """Capacity (Ah) of the low-rate pOCV discharge: C/10 for the LG M50T, C/20 for the P45B."""
+    if cell_type == "M50T":
+        return m50t_curve(cell, rpt)["Q"].max()
+    return p45b_curve(cell, rpt, "discharge")["Q"].max()
+
+
+def state_of_health(cell_type, cells, rpts):
+    """pOCV capacity relative to the first RPT, mean of the cells, per RPT."""
+    q = {r: np.mean([pocv_capacity(cell_type, c, r) for c in cells]) for r in rpts}
+    return {r: q[r] / q[rpts[0]] for r in rpts}
 
 
 def low_soc_onset(pulses, n, n_sigma):
@@ -90,7 +107,7 @@ def m50t_two_cells():
         onset_all = [low_soc_onset(p, n, k) for p in (a, b) for k in ONSET_SIGMA_RANGE]
         onset_all = [v for v in onset_all if np.isfinite(v)]
 
-        out[rpt] = dict(Q=(a["Q"] + b["Q"]) / 2, s0=s0, s1=s1, R=r, half=half_range,
+        out[rpt] = dict(s0=s0, s1=s1, R=r, half=half_range,
                         onset=float(np.nanmean(onset_3)) if np.any(np.isfinite(onset_3)) else 0,
                         onset_lo=min(onset_all) if onset_all else 0,
                         onset_hi=max(onset_all) if onset_all else 0,
@@ -168,25 +185,25 @@ def r_span_label(lo, hi, fmt):
     return f"$\\mathbf{{R_{{0.1\\,s}}}}$ ≈ {lo:{fmt}}–{hi:{fmt}} m$\\mathbf{{\\Omega}}$"
 
 
-def make_figure(m50t, p45b_mean, p45b_half, p45b_q, out):
+def make_figure(m50t, m50t_soh, p45b_mean, p45b_half, p45b_soh, out):
     m50t_ref = m50t[0]["mid_mean"]
     p45b_ref = p45b_mean[0].mean()
 
     fig = plt.figure(figsize=(9.6, 4.6))
     ax_a = fig.add_axes([0.07, 0.22, 0.50, 0.64])
     ax_b = fig.add_axes([0.61, 0.22, 0.26, 0.64], sharey=ax_a)
-    cax = fig.add_axes([0.905, 0.22, 0.015, 0.64])
+    cax = fig.add_axes([0.925, 0.22, 0.015, 0.64])
 
     draw_m50t(ax_a, m50t, m50t_ref)
     draw_p45b(ax_b, p45b_mean, p45b_ref)
 
     r_max_m50t = max(m50t[r]["R"].max() for r in M50T_PULSE_RPTS)
     label_axes(ax_a, [str(CYCLES_PER_M50T_RPT * r) for r in M50T_PULSE_RPTS],
-               [m50t[r]["Q"] / m50t[0]["Q"] for r in M50T_PULSE_RPTS],
+               [m50t_soh[r] for r in M50T_PULSE_RPTS],
                [max(m50t[r]["half"]) for r in M50T_PULSE_RPTS],
                "(a) LG M50T   " + r_span_label(m50t_ref, r_max_m50t, ".0f"))
     label_axes(ax_b, [str(n) for n in P45B_RPTS],
-               [p45b_q[n] / p45b_q[0] for n in P45B_RPTS],
+               [p45b_soh[n] for n in P45B_RPTS],
                [max(p45b_half[n]) for n in P45B_RPTS],
                "(b) Molicel P45B   " + r_span_label(min(p45b_mean[n].min() for n in P45B_RPTS),
                                                     max(p45b_mean[n].max() for n in P45B_RPTS), ".1f"))
@@ -212,14 +229,14 @@ def make_figure(m50t, p45b_mean, p45b_half, p45b_q, out):
     fig.savefig(out, dpi=300, bbox_inches="tight", pad_inches=0.05)
 
 
-def m50t_table(m50t):
+def m50t_table(m50t, m50t_soh):
     """The numbers behind panel (a), one row per RPT."""
     rows = []
     for rpt in M50T_PULSE_RPTS:
         d = m50t[rpt]
         mid = (d["s0"] >= 30) & (d["s0"] <= 70)
         r1, r2 = d["R_cells"]["cell1"][mid].mean(), d["R_cells"]["cell2"][mid].mean()
-        rows.append(dict(RPT=rpt, cycles=CYCLES_PER_M50T_RPT * rpt, SOH=d["Q"] / m50t[0]["Q"],
+        rows.append(dict(RPT=rpt, cycles=CYCLES_PER_M50T_RPT * rpt, SOH=m50t_soh[rpt],
                          R_midSOC_cell1_mOhm=r1, R_midSOC_cell2_mOhm=r2,
                          R_midSOC_mean_mOhm=d["R"][mid].mean(),
                          R_midSOC_half_range_mOhm=abs(r1 - r2) / 2,
@@ -232,7 +249,7 @@ def m50t_table(m50t):
     return pd.DataFrame(rows).round(3)
 
 
-def p45b_table(p45b, p45b_mean, p45b_half, p45b_q):
+def p45b_table(p45b, p45b_mean, p45b_half, p45b_soh):
     """The numbers behind panel (b), one row per tile."""
     rows = []
     for rpt in P45B_RPTS:
@@ -240,7 +257,7 @@ def p45b_table(p45b, p45b_mean, p45b_half, p45b_q):
             rows.append(dict(RPT=rpt, SOC_pct=soc,
                              R_cell1_mOhm=p45b["cell1"][rpt][j], R_cell2_mOhm=p45b["cell2"][rpt][j],
                              R_mean_mOhm=p45b_mean[rpt][j], R_half_range_mOhm=p45b_half[rpt][j],
-                             SOH=p45b_q[rpt] / p45b_q[0]))
+                             SOH=p45b_soh[rpt]))
     return pd.DataFrame(rows).round(3)
 
 
@@ -252,18 +269,22 @@ def main():
     os.makedirs(folder, exist_ok=True)
 
     m50t = m50t_two_cells()
+    m50t_soh = state_of_health("M50T", M50T_CELLS.values(), M50T_PULSE_RPTS)
 
-    # P45B: SOH from cell1's C/20 discharge capacity; tiles are the two-cell mean.
-    p45b_q = {n: p45b_capacity("cell1", n) for n in P45B_RPTS}
+    # P45B: tiles are the two-cell mean.
+    p45b_soh = state_of_health("P45B", P45B_CELLS, P45B_RPTS)
     p45b = {c: {n: p45b_pulse_resistance(c, n) for n in P45B_RPTS} for c in P45B_CELLS}
     p45b_mean = {n: (p45b["cell1"][n] + p45b["cell2"][n]) / 2 for n in P45B_RPTS}
     p45b_half = {n: np.abs(p45b["cell1"][n] - p45b["cell2"][n]) / 2 for n in P45B_RPTS}
 
-    make_figure(m50t, p45b_mean, p45b_half, p45b_q, a.out)
-    m50t_table(m50t).to_csv(os.path.join(folder, "Fig2_values_M50T.csv"), index=False)
-    p45b_table(p45b, p45b_mean, p45b_half, p45b_q).to_csv(os.path.join(folder, "Fig2_values_P45B.csv"), index=False)
+    make_figure(m50t, m50t_soh, p45b_mean, p45b_half, p45b_soh, a.out)
+    m50t_table(m50t, m50t_soh).to_csv(os.path.join(folder, "Fig2_values_M50T.csv"), index=False)
+    p45b_table(p45b, p45b_mean, p45b_half, p45b_soh).to_csv(os.path.join(folder, "Fig2_values_P45B.csv"), index=False)
 
     print(f"wrote {a.out}")
+    print("State of health (pOCV capacity, two-cell mean):")
+    print("  M50T:", {r: round(float(m50t_soh[r]), 3) for r in M50T_PULSE_RPTS})
+    print("  P45B:", {n: round(float(p45b_soh[n]), 3) for n in P45B_RPTS})
     print("M50T onset of the low-SOC rise (% SOC), mean of both cells at 3 sigma:",
           {r: round(m50t[r]["onset"]) for r in M50T_PULSE_RPTS})
     print("  error bar (both cells, 2-4 sigma):",
