@@ -1,0 +1,6 @@
+# downloaded data and generated output are not part of the repository
+data/
+output/
+__pycache__/
+*.pyc
+.DS_Store

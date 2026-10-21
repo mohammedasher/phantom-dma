@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper and this software."
+title: "phantom-dma: code for 'Phantom LAM and LLI: Resistance and Hysteresis Bias in Voltage-Curve Degradation Mode Analysis'"
+type: software
+version: 1.0.0
+license: BSD-3-Clause
+authors:
+  - family-names: "N"
+    given-names: "Mohammed Asheruddin"
+    orcid: "https://orcid.org/0000-0002-5082-7562"
+    affiliation: "Imperial College London; The Faraday Institution"
+  - family-names: "Leal De Souza"
+    given-names: "Matheus"
+    orcid: "https://orcid.org/0009-0001-0922-6837"
+    affiliation: "Imperial College London; The Faraday Institution"
+  - family-names: "Folkson"
+    given-names: "Catherine"
+    orcid: "https://orcid.org/0009-0000-5121-0874"
+    affiliation: "Imperial College London; The Faraday Institution"
+  - family-names: "Offer"
+    given-names: "Gregory"
+    orcid: "https://orcid.org/0000-0003-1324-8366"
+    affiliation: "Imperial College London; The Faraday Institution"
+  - family-names: "Marinescu"
+    given-names: "Monica"
+    orcid: "https://orcid.org/0000-0003-1641-3371"
+    affiliation: "Imperial College London; The Faraday Institution"
+keywords:
+  - lithium-ion battery
+  - degradation mode analysis
+  - silicon-graphite
+  - pseudo-open-circuit voltage
+references:
+  - type: dataset
+    title: "Molicel P45B ageing and reference-performance-test data, and degradation-mode-analysis outputs"
+    doi: "10.5281/zenodo.23538218"
+    authors:
+      - family-names: "N"
+        given-names: "Mohammed Asheruddin"
+  - type: dataset
+    title: "Data from: Lithium-ion battery degradation: comprehensive cycle ageing data and analysis for commercial 21700 cells"
+    doi: "10.5281/zenodo.10637534"
+    authors:
+      - family-names: "Kirkaldy"
+        given-names: "Niall"
