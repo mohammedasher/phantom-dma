@@ -24,7 +24,7 @@ You can use it at two levels:
 You need Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/<owner>/phantom-dma.git
+git clone https://github.com/mohammedasher/phantom-dma.git
 cd phantom-dma
 python -m venv venv
 source venv/bin/activate          # on Windows: venv\Scripts\activate
@@ -118,6 +118,7 @@ Figures go to `output/figures/`.
 | Fig. 6 | `figures/fig_bias_modes.py 6` | `results/P45B_discharge_2.5-4.2`, `results/P45B_discharge_3.0-4.2` |
 | Fig. 7 | `figures/fig_bias_modes.py 7` | `results/P45B_discharge_2.94-4.2`, `results/P45B_charge_2.94-4.2` |
 | Fig. S1 | `figures/figS1_peak_alignment.py` | the same two analyses as Fig. 7 |
+| Graphical abstract | `figures/graphical_abstract.py` | the analyses of Figs. 5-7, P45B data |
 | Table 2 | `step3_tables.py` (`table2`) | the six analyses of Figs. 5-7, with their Monte Carlo |
 | Tables S1-S7 | `step3_tables.py` (`table_s1` ... `table_s7`) | see the docstring of each function |
 
