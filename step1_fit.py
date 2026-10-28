@@ -34,9 +34,13 @@ def fit_one_cell(task):
     fit.set_bounds(settings.get("bounds"))
     model = CellModel(*HALFCELLS[(settings["cell"], settings["branch"])])
     curves = load_curves(settings, cell)
+    splits = None
+    if settings.get("split_from"):
+        # transition point taken, RPT by RPT, from the nominal fits of another analysis of the same cell
+        src = os.path.join(paths.RESULTS, settings["split_from"], "fits")
+        splits = {r: float(np.load(os.path.join(src, f"{cell}_RPT_{r:03d}.npz"))["delta"]) for r in curves}
     table, arrays = fit.fit_sequence(model, curves, settings["branch"], settings["window"],
-                                     n_trials=settings.get("n_trials", fit.N_TRIALS),
-                                     dvdz_whole_curve=settings.get("dvdz_whole_curve", False),
+                                     splits=splits,
                                      log=lambda s: print(f"[{name} {cell}]{s}", flush=True))
 
     # Degradation modes relative to the first RPT (beginning of life).

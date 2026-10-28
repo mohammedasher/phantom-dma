@@ -20,5 +20,5 @@ if not os.path.isdir(os.path.join(M50T_DATA, "Summary Data")) and os.path.isdir(
     M50T_DATA = _inner
 
 REFERENCE_CURVES = os.path.join(HERE, "reference_curves")   # half-cell curves (in this repository)
-RESULTS = os.path.join(HERE, "results")                     # fitted results (in this repository)
+RESULTS = os.environ.get("DMA_RESULTS_DIR") or os.path.join(HERE, "results")   # fitted results (in this repository)
 OUTPUT = os.path.join(HERE, "output")                       # tables and figures are written here

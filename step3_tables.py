@@ -1,9 +1,9 @@
-"""Step 3: make Table 2 of the paper and Tables S1-S7 of the SI from the results folder.
+"""Step 3: make Tables S1-S8 of the SI from the results folder.
 
     python step3_tables.py
 
-Writes to output/tables/: the body rows of each table as LaTeX (Table2_rows.tex,
-TableS1_rows.tex, ...) and the numbers behind Table 2 and Table S7 as CSV.
+Writes to output/tables/: the body rows of each table as LaTeX (TableS1_rows.tex, ...)
+and the numbers behind Table S6 as CSV.
 Each table shows the mean of the two cells +/- half their range, unless stated.
 """
 import os
@@ -54,10 +54,6 @@ def rmse_low_high(analysis, cell, rpt):
     return rmse(low), rmse(high)
 
 
-def constrained(group):
-    return "yes" if group.constraint_active.fillna("").astype(str).str.len().gt(0).any() else ""
-
-
 def save(name, body):
     os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(OUT, f"{name}_rows.tex"), "w") as f:
@@ -65,63 +61,18 @@ def save(name, body):
     print(f"--- {name}\n{body}\n")
 
 
-# ------------------------------------------------------------------ Table 2
-MODES = [("LAM_PE_pct", r"$\mathrm{LAM}_{\mathrm{PE}}$"), ("LLI_pct", "LLI"), ("LAM_NE_pct", r"$\mathrm{LAM}_{\mathrm{NE}}$"),
-         ("LAM_Gr_pct", r"$\mathrm{LAM}^{*}_{\mathrm{Gr}}$"), ("LAM_Si_pct", r"$\mathrm{LAM}^{*}_{\mathrm{Si}}$")]
-DECISIONS = [("M50T_discharge_IR-corrected", "M50T_discharge_uncorrected", 14, "IR correction omitted (LG M50T)"),
-             ("P45B_discharge_2.5-4.2", "P45B_discharge_3.0-4.2", 500, "Lower cut-off raised to 3.0 V (P45B)"),
-             ("P45B_discharge_2.94-4.2", "P45B_charge_2.94-4.2", 500, "Charge branch instead of discharge (P45B)")]
-
-
-def table2():
-    """Change in each mode at the last RPT: alternative minus reference analysis (percentage points).
-
-    The uncertainty is paired (see phantom_dma/uncertainty.py). Changes smaller than
-    twice their uncertainty are set in italics. Relative change = change / reference
-    value; for the LG M50T, the mean of the relative change over the ageing RPTs.
-    """
-    rows, raw = [], []
-    for key, label in MODES:
-        cells = []
-        for ref, alt, rpt, decision in DECISIONS:
-            a, b = summary(ref), summary(alt)
-            r = a[a.RPT == rpt][key].mean()
-            d = b[b.RPT == rpt][key].mean() - r
-            p = paired_difference(RES, ref, alt, key).loc[rpt]
-            if ref.startswith("M50T"):
-                rel = np.mean([100 * (b[b.RPT == k][key].mean() - a[a.RPT == k][key].mean()) / a[a.RPT == k][key].mean()
-                               for k in sorted(set(a.RPT) & set(b.RPT)) if 0 < k <= rpt])
-                rel_text = f"{rel:+.1f}" if abs(rel) < 10 else f"{rel:+.0f}"
-            else:
-                rel = 100 * d / r
-                rel_text = "--" if abs(r) < 0.5 else (f"{rel:+.1f}" if abs(rel) < 10 else f"{rel:+.0f}")
-            text = f"{d:+.1f}" + PM + f"{p.combined:.1f}"
-            if abs(d) < 2 * p.combined:
-                text = r"\textit{" + text + "}"
-            cells.append(f"{text} & {rel_text}")
-            raw.append({"Decision": decision, "RPT": rpt, "Mode": key.replace("_pct", ""), "Delta / pp": d,
-                        "Cell Half-Range / pp": p.cell_half_range, "Monte Carlo SD / pp": p.mc_sd,
-                        "Paired Uncertainty / pp": p.combined})
-        rows.append(label + " & " + " & ".join(cells) + r" \\")
-    body = "\n".join(rows)
-    body = re.sub(r"([&{] ?)([+-])(?=\d)", lambda m: m.group(1) + "$" + m.group(2) + "$", body)
-    save("Table2", body)
-    pd.DataFrame(raw).to_csv(os.path.join(OUT, "Table2_bias_last_RPT.csv"), index=False)
-
-
 # ------------------------------------------------------------------ SI tables
 def table_s1():
-    """Fit quality, P45B: RMSE, low- and high-SOC residual, V_max error, largest peak error (mV)."""
+    """Fit quality, P45B: RMSE, low- and high-SOC residual, largest peak error (mV)."""
     rows = []
     for analysis, label in P45B_MAIN:
         s = summary(analysis)
         peaks = peak_errors(RES, analysis)
-        rows.append(r"\multicolumn{7}{l}{\textit{" + label + r"}} \\")
+        rows.append(r"\multicolumn{5}{l}{\textit{" + label + r"}} \\")
         for rpt, g in s.groupby("RPT"):
             low, high = zip(*[rmse_low_high(analysis, c, rpt) for c in g.Cell])
             worst = peaks[peaks.RPT == rpt].dV_mV.abs().max()
-            rows.append(f"{rpt} & {pm(g.RMSE_mV)} & {pm(low)} & {pm(high)} & {pm(g.Vmax_err_mV)} & {worst:.0f} & "
-                        f"{constrained(g)} \\\\")
+            rows.append(f"{rpt} & {pm(g.RMSE_mV)} & {pm(low)} & {pm(high)} & {worst:.0f} \\\\")
     save("TableS1", "\n".join(rows))
 
 
@@ -137,22 +88,19 @@ def table_s2(rpts=(0, 50, 500)):
     save("TableS2", "\n".join(rows))
 
 
-def table_s3(tol=0.005):
-    """Window screen at the first and last RPT; parameters within 0.005 of a search limit are listed."""
-    screens = [("P45B_discharge_2.5-4.0_screen", "discharge 2.5--4.0 V", SCREEN_BOUNDS),
-               ("P45B_discharge_2.5-4.2", "discharge 2.5--4.2 V", DEFAULT_BOUNDS),
-               ("P45B_discharge_3.2-4.2_screen", "discharge 3.2--4.2 V", SCREEN_BOUNDS),
-               ("P45B_discharge_3.5-4.2_screen", "discharge 3.5--4.2 V", SCREEN_BOUNDS)]
+def table_s3():
+    """Window screen at the first and last RPT: RMSE, phi_Si, nu_PE; LAM_NE and LAM*_Si at the last RPT."""
+    screens = [("P45B_discharge_2.5-4.2", "discharge 2.5--4.2 V", DEFAULT_BOUNDS)]
+    screens += [(f"P45B_discharge_{lo}-4.2_screen", f"discharge {lo}--4.2 V", SCREEN_BOUNDS)
+                for lo in ("3.2", "3.3", "3.4", "3.5")]
     rows = []
     for analysis, label, bounds in screens:
         s = summary(analysis)
-        rows.append(r"\multicolumn{5}{l}{\textit{" + label + r"}} \\")
+        rows.append(r"\multicolumn{6}{l}{\textit{" + label + r"}} \\")
         for rpt in (0, 500):
             g = s[s.RPT == rpt]
-            hit = [SYMBOL[k] for k, (lo, hi) in zip(PARAMS, bounds)
-                   if ((g[k] - lo).abs() < tol).any() or ((g[k] - hi).abs() < tol).any()]
-            rows.append(f"{rpt} & {pm(g.RMSE_mV)} & {pm(g.phi_Si, '{:.3f}')} & {pm(g.nu_PE, '{:.3f}')} & "
-                        f"{', '.join(hit)} \\\\")
+            loss = " & ".join(pm(g[k]) if rpt else "--" for k in ("LAM_NE_pct", "LAM_Si_pct"))
+            rows.append(f"{rpt} & {pm(g.RMSE_mV)} & {pm(g.phi_Si, '{:.3f}')} & {pm(g.nu_PE, '{:.3f}')} & {loss} \\\\")
     save("TableS3", "\n".join(rows))
 
 
@@ -161,11 +109,11 @@ def table_s4():
     rows = []
     for analysis, label in M50T:
         s = summary(analysis)
-        rows.append(r"\multicolumn{6}{l}{\textit{" + label + r"}} \\")
+        rows.append(r"\multicolumn{4}{l}{\textit{" + label + r"}} \\")
         for rpt in M50T_RPTS:
             g = s[s.RPT == rpt]
             low, high = zip(*[rmse_low_high(analysis, c, rpt) for c in g.Cell])
-            rows.append(f"{rpt} & {pm(g.RMSE_mV)} & {pm(low)} & {pm(high)} & {pm(g.Vmax_err_mV)} & {constrained(g)} \\\\")
+            rows.append(f"{rpt} & {pm(g.RMSE_mV)} & {pm(low)} & {pm(high)} \\\\")
     save("TableS4", "\n".join(rows))
 
 
@@ -179,30 +127,6 @@ def table_s5():
             g = s[s.RPT == rpt]
             rows.append(f"{rpt} & " + " & ".join(pm(g[k], "{:.3f}") for k in PARAMS) + r" \\")
     save("TableS5", "\n".join(rows))
-
-
-def table_s6():
-    """Silicon-resolved loss re-referenced to the first ageing RPT (RPT 50), P45B 2.94-4.2 V."""
-    rows = []
-    per_branch = {}
-    for analysis in ("P45B_discharge_2.94-4.2", "P45B_charge_2.94-4.2"):
-        s = summary(analysis)
-        out = []
-        for cell, g in s.groupby("Cell"):
-            ref = g[g.RPT == 50].iloc[0]
-            ref_cap = {k: ref[k + "_Ah"] for k in ("Q_NE", "Q_PE", "Q_LI", "Q_Si", "Q_Gr")}
-            for _, row in g.iterrows():
-                out.append(dict(Cell=cell, RPT=row.RPT,
-                                **losses({k: row[k + "_Ah"] for k in ref_cap}, ref_cap)))
-        per_branch[analysis] = pd.DataFrame(out)
-    for rpt in (100, 200, 300, 400, 500):
-        cells = []
-        for analysis, t in per_branch.items():
-            v = t[t.RPT == rpt].LAM_Si_pct.values
-            m, h = v.mean(), (v.max() - v.min()) / 2
-            cells.append((f"${m:.1f}$" if m < 0 else f"{m:.1f}") + PM + f"{h:.1f}")
-        rows.append(f"{rpt} & " + " & ".join(cells) + r" \\")
-    save("TableS6", "\n".join(rows))
 
 
 def sensitivity_share(model, z, theta, eps=1e-4):
@@ -219,7 +143,7 @@ def sensitivity_share(model, z, theta, eps=1e-4):
     return out[4], out[1]
 
 
-def table_s7():
+def table_s6():
     """Where the fit learns phi_Si and nu_PE: share of the voltage sensitivity by region (range over cells and RPTs 0, 500)."""
     analyses = [("P45B_discharge_2.5-4.2", "discharge", "discharge 2.5--4.2~V"),
                 ("P45B_discharge_2.94-4.2", "discharge", "discharge 2.94--4.2~V"),
@@ -238,11 +162,69 @@ def table_s7():
                                 nu_PE_highest_third_pct=n))
         span = lambda v: f"{min(v):.0f}" if round(min(v)) == round(max(v)) else f"{min(v):.0f}--{max(v):.0f}"
         rows.append(f"{label} & {span(phi)}\\,\\% & {span(nu)}\\,\\% \\\\")
-    save("TableS7", "\n".join(rows))
-    pd.DataFrame(raw).to_csv(os.path.join(OUT, "TableS7_sensitivity_share.csv"), index=False)
+    save("TableS6", "\n".join(rows))
+    pd.DataFrame(raw).to_csv(os.path.join(OUT, "TableS6_sensitivity_share.csv"), index=False)
+
+
+def table_s7():
+    """Branch comparison at the last RPT with each branch's own transition point and with a common one."""
+    rows_def = [("P45B_discharge_2.94-4.2", "discharge", "own"),
+                ("P45B_discharge_2.94-4.2_charge-split", "discharge", "charge"),
+                ("P45B_charge_2.94-4.2", "charge", "own"),
+                ("P45B_charge_2.94-4.2_discharge-split", "charge", "discharge")]
+    rows = []
+    for analysis, branch, source in rows_def:
+        deltas = [float(np.load(os.path.join(RES, analysis, "fits", f))["delta"])
+                  for f in os.listdir(os.path.join(RES, analysis, "fits")) if f.endswith(".npz")]
+        u = pd.read_csv(os.path.join(RES, analysis, "uncertainty.csv")).set_index("RPT").loc[500]
+        vals = " & ".join(f"{u[k + '_mean']:.1f}" + PM + f"{u[k + '_combined']:.1f}"
+                          for k in ("LAM_NE_pct", "LAM_Si_pct", "LAM_Gr_pct", "LLI_pct"))
+        rows.append(f"{branch} & {min(deltas):.3f}--{max(deltas):.3f} ({source}) & {vals} \\\\")
+    pairs = [("P45B_discharge_2.94-4.2", "P45B_charge_2.94-4.2", "own"),
+             ("P45B_discharge_2.94-4.2_charge-split", "P45B_charge_2.94-4.2", "charge delta on both"),
+             ("P45B_discharge_2.94-4.2", "P45B_charge_2.94-4.2_discharge-split", "discharge delta on both")]
+    notes = []
+    for ref, alt, label in pairs:
+        d = paired_difference(RES, ref, alt, "LAM_Si_pct")
+        resolved = [r for r in d.index if r > 0 and abs(d.loc[r, "delta"]) > 2 * d.loc[r, "combined"]]
+        notes.append(f"% {label}: dLAM_Si(RPT 500) = {d.loc[500, 'delta']:.1f} +/- {d.loc[500, 'combined']:.1f}; resolved at RPT {resolved}")
+    save("TableS7", "\n".join(rows + notes))
+
+
+def table_s8():
+    """M50T losses per RPT with no correction, the 0.1 s correction and the 10 s correction,
+    and the RPT-averaged overstatement of LAM_PE without correction (quoted in Section 3.2)."""
+    runs = ["M50T_discharge_uncorrected", "M50T_discharge_IR-corrected", "M50T_discharge_IR10s-corrected"]
+    s = {r: summary(r) for r in runs}
+    rows = []
+    for rpt in M50T_RPTS:
+        cells = []
+        for k in ("LAM_PE_pct", "LAM_NE_pct", "LAM_Si_pct"):
+            for r in runs:
+                cells.append(pm(s[r][s[r].RPT == rpt][k]))
+        rows.append(f"{rpt} & " + " & ".join(cells) + r" \\")
+    ageing = list(M50T_RPTS[1:])
+    ref, alt = "M50T_discharge_IR-corrected", "M50T_discharge_uncorrected"
+    # Two-cell mean over ageing RPTs, with the paired uncertainty averaged in the same way.
+    m = s[ref].merge(s[alt], on=["Cell", "RPT"], suffixes=("_r", "_a"))
+    m = m[m.RPT.isin(ageing)]
+    m["d"] = m["LAM_PE_pct_a"] - m["LAM_PE_pct_r"]
+    per_cell = m.groupby("Cell")["d"].mean()
+    half_range = (per_cell.max() - per_cell.min()) / 2
+    sds = {}
+    for cell in sorted(per_cell.index):
+        a = pd.read_csv(os.path.join(RES, alt, f"{cell}_mc.csv"))
+        b = pd.read_csv(os.path.join(RES, ref, f"{cell}_mc.csv"))
+        j = a.merge(b, on=["draw", "RPT"], suffixes=("_a", "_r"))
+        j = j[j.RPT.isin(ageing)]
+        sds[cell] = (j["LAM_PE_pct_a"] - j["LAM_PE_pct_r"]).groupby(j.draw).mean().std()
+    mc = float(np.mean(list(sds.values())))
+    rows.append(f"% LAM_PE overstatement averaged over ageing RPTs: two-cell {per_cell.mean():.2f} +/- "
+                f"{np.hypot(half_range, mc):.2f}; " + "; ".join(f"{c} {per_cell[c]:.2f} +/- {sds[c]:.2f}" for c in sorted(per_cell.index)))
+    save("TableS8", "\n".join(rows))
 
 
 if __name__ == "__main__":
-    for make in (table2, table_s1, table_s2, table_s3, table_s4, table_s5, table_s6, table_s7):
+    for make in (table_s1, table_s2, table_s3, table_s4, table_s5, table_s6, table_s7, table_s8):
         make()
     print("Tables written to", OUT)

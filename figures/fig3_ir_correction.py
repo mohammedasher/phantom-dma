@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.signal import find_peaks, savgol_filter
 
-from phantom_dma.data import M50T_POCV_CURRENT_A, m50t_file
+from phantom_dma.data import M50T_POCV_CURRENT_A, m50t_file, m50t_resistance_ratio
 from phantom_dma.resistance import ir_lift, ir_lift_ensemble, m50t_pulse_capacities
 
 CELL = "E"                 # cell2 of the LG M50T (Kirkaldy et al. name, used to open its files)
@@ -395,8 +395,12 @@ def make_figure(r, out):
     fig.text(0.07, 0.035, r"At C/10 (0.5 A):  1 m$\Omega$ $\rightarrow$ 0.5 mV shift in V–Q and d$Q$/d$V$ peaks;  "
              r"0 in d$V$/d$Q$.     Faster pOCV scales all shifts:  C/5 $\times$2  $\cdot$  C/2 $\times$5  $\cdot$  "
              r"1C $\times$10.", fontsize=7.8, ha="left", va="bottom")
-    fig.text(0.07, 0.008, r"Ohmic (0.1 s) resistance only, i.e. a lower bound:  the 10 s resistance is 1.3$\times$ "
-             r"larger at mid-SOC and up to 2.6$\times$ at low SOC.", fontsize=7.8, ha="left", va="bottom")
+    ratios = [m50t_resistance_ratio(c, FIRST_RPT) for c in (CELL, SECOND_CELL)]
+    mid = np.mean([x[(s > 0.3) & (s < 0.7)].mean() for s, x in ratios])
+    low = max(x.max() for s, x in ratios)
+    fig.text(0.07, 0.008, r"Instantaneous (0.1 s) resistance only, i.e. a lower bound:  at beginning of life the 10 s "
+             rf"resistance is {mid:.1f}$\times$ larger at mid-SOC and up to {low:.1f}$\times$ at low SOC.",
+             fontsize=7.8, ha="left", va="bottom")
     fig.savefig(out, dpi=300, bbox_inches="tight", pad_inches=0.06)
 
 

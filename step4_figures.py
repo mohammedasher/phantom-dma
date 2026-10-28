@@ -1,4 +1,4 @@
-"""Step 4: make every figure of the paper that comes from data (Figs. 1-7 and Fig. S1).
+"""Step 4: make every figure of the paper that comes from data (Figs. 1-7, Figs. S1 and S2).
 
     python step4_figures.py
 
@@ -19,6 +19,7 @@ SCRIPTS = [
     ["figures/fig_bias_modes.py", "6"],
     ["figures/fig_bias_modes.py", "7"],
     ["figures/figS1_peak_alignment.py"],
+    ["figures/figS2_current_partition.py"],
 ]
 
 if __name__ == "__main__":

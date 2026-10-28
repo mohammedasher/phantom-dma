@@ -29,26 +29,29 @@ P45B_COMMON_LOWER_V = 2.94
 SCREEN_BOUNDS = [(0.4, 1.05), (0.4, 1.05), (-0.6, 0.5), (-0.2, 0.6), (0.0, 0.3)]
 
 ANALYSES = {
-    # Main analyses (Figs. 5-7, Table 2).
+    # Main analyses (Figs. 5-7).
     "P45B_discharge_2.5-4.2": dict(cell="P45B", branch="discharge", window=(2.5, 4.2)),
     "P45B_discharge_3.0-4.2": dict(cell="P45B", branch="discharge", window=(3.0, 4.2)),
     "P45B_discharge_2.94-4.2": dict(cell="P45B", branch="discharge", window=(P45B_COMMON_LOWER_V, 4.2)),
     "P45B_charge_2.94-4.2": dict(cell="P45B", branch="charge", window=(P45B_COMMON_LOWER_V, 4.2)),
     "M50T_discharge_IR-corrected": dict(cell="M50T", branch="discharge", window=(2.5, 4.2), ir_corrected=True),
+    # Sensitivity test for the slow part of the resistance (Table S8; nominal fits only).
+    "M50T_discharge_IR10s-corrected": dict(cell="M50T", branch="discharge", window=(2.5, 4.2), ir_corrected="10s"),
     "M50T_discharge_uncorrected": dict(cell="M50T", branch="discharge", window=(2.5, 4.2), ir_corrected=False,
                                        mc_rpts=(0, 2, 4, 6, 8, 10, 12, 14)),
-    # Window screens (Table S3): three optimiser trials per RPT and wider limits.
-    "P45B_discharge_2.5-4.0_screen": dict(cell="P45B", branch="discharge", window=(2.5, 4.0), n_trials=3,
-                                          bounds=SCREEN_BOUNDS),
-    "P45B_discharge_3.2-4.2_screen": dict(cell="P45B", branch="discharge", window=(3.2, 4.2), n_trials=3,
-                                          bounds=SCREEN_BOUNDS),
-    "P45B_discharge_3.5-4.2_screen": dict(cell="P45B", branch="discharge", window=(3.5, 4.2), n_trials=3,
-                                          bounds=SCREEN_BOUNDS),
-    # Check in the SI: the charge branch fitted with dV/dz over the whole curve.
-    "P45B_charge_2.94-4.2_dvdz_whole_curve": dict(cell="P45B", branch="charge",
-                                                  window=(P45B_COMMON_LOWER_V, 4.2), dvdz_whole_curve=True),
+    # Window screens (Table S3): lower limit raised at a fixed 4.2 V upper limit, wider search
+    # limits, ten optimiser trials per RPT as in the main analyses.
+    "P45B_discharge_3.2-4.2_screen": dict(cell="P45B", branch="discharge", window=(3.2, 4.2), bounds=SCREEN_BOUNDS),
+    "P45B_discharge_3.3-4.2_screen": dict(cell="P45B", branch="discharge", window=(3.3, 4.2), bounds=SCREEN_BOUNDS),
+    "P45B_discharge_3.4-4.2_screen": dict(cell="P45B", branch="discharge", window=(3.4, 4.2), bounds=SCREEN_BOUNDS),
+    "P45B_discharge_3.5-4.2_screen": dict(cell="P45B", branch="discharge", window=(3.5, 4.2), bounds=SCREEN_BOUNDS),
+    # Transition-point swap test: each branch fitted with the other branch's transition point,
+    # RPT by RPT, same cell and voltage range; everything else as in the main analyses.
+    "P45B_discharge_2.94-4.2_charge-split": dict(cell="P45B", branch="discharge", window=(P45B_COMMON_LOWER_V, 4.2),
+                                                 split_from="P45B_charge_2.94-4.2"),
+    "P45B_charge_2.94-4.2_discharge-split": dict(cell="P45B", branch="charge", window=(P45B_COMMON_LOWER_V, 4.2),
+                                                 split_from="P45B_discharge_2.94-4.2"),
 }
 
-# Analyses with the half-cell Monte Carlo.
-WITH_MONTE_CARLO = ["P45B_discharge_2.5-4.2", "P45B_discharge_3.0-4.2", "P45B_discharge_2.94-4.2",
-                    "P45B_charge_2.94-4.2", "M50T_discharge_IR-corrected", "M50T_discharge_uncorrected"]
+# Analyses with the half-cell Monte Carlo: all except the 10 s sensitivity test (nominal fits only).
+WITH_MONTE_CARLO = [name for name in ANALYSES if name != "M50T_discharge_IR10s-corrected"]

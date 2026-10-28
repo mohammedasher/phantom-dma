@@ -2,7 +2,7 @@
 
 Each draw shifts the PE, graphite and silicon curves by independent normal
 offsets of standard deviation SIGMA_U_MV, refits every RPT from the nominal
-parameters (three short warm-started trials, best kept), and recomputes the
+parameters with the optimiser settings of the nominal fits, and recomputes the
 degradation modes against that draw's own beginning-of-life refit.
 """
 import os
@@ -13,14 +13,13 @@ import pandas as pd
 from .fit import fit_curve, prepare_window
 from .model import CellModel, losses, reservoirs
 
-SIGMA_U_MV = 2.0
-N_DRAWS = 15
-N_TRIALS_MC = 3
+SIGMA_U_MV = 2.0     # standard deviation of each half-cell offset (mV)
+N_DRAWS = 50
 SEED = 12345
 
 
 def run_mc(halfcells, curves, branch, window, nominal, cell_index=0, sigma_mv=SIGMA_U_MV,
-           n_draws=N_DRAWS, log=print):
+           n_draws=N_DRAWS, log=print, splits=None):
     """nominal: DataFrame from fit_sequence for this cell. Returns one row per draw and RPT."""
     rng = np.random.default_rng(SEED + cell_index)
     prepared = {r: prepare_window(curves[r], window) for r in sorted(curves)}
@@ -34,12 +33,12 @@ def run_mc(halfcells, curves, branch, window, nominal, cell_index=0, sigma_mv=SI
             n = nominal.loc[rpt]
             seed_theta = [n.nu_NE, n.nu_PE, n.sigma_NE, n.sigma_PE, n.phi_Si]
             theta, _, _ = fit_curve(model, z, u, q_fc, branch, seed_theta, q_ref=q_ref, tol=1.0,
-                                    n_trials=N_TRIALS_MC, pop_size=40, spread=0.02, maxiter=300,
-                                    seed_offset=(777, 888))
+                                    seed_offset=(777, 888),
+                                    delta=splits[rpt])
             r = reservoirs(theta, q_fc)
             if res0 is None:
                 res0, q_ref = r, (r["Q_NE"], r["Q_PE"], r["Q_LI"])
-            rows.append(dict(draw=draw, RPT=rpt, **losses(r, res0),
+            rows.append(dict(draw=draw, RPT=rpt, **losses(r, res0), **{k + "_Ah": v for k, v in r.items()},
                              dPE_mV=offsets[0] * 1e3, dGr_mV=offsets[1] * 1e3, dSi_mV=offsets[2] * 1e3))
         log(f"  draw {draw + 1}/{n_draws} done")
     return pd.DataFrame(rows)

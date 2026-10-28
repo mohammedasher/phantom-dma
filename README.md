@@ -60,6 +60,7 @@ Which steps need which data:
 | 1, 2 (fitting) | yes | yes |
 | 3 (tables) | no | no |
 | 4 (figures) | Figs. 1, 2, 4 | Figs. 2, 3, 5 |
+| 5 (numbers in the text) | yes | yes |
 
 The half-cell reference curves are in `reference_curves/` (see the README there).
 
@@ -85,7 +86,7 @@ python step2_monte_carlo.py --all
 ```
 
 This repeats each fit with the half-cell curves shifted by random offsets (standard
-deviation 2 mV, 15 draws per cell). It takes several hours per analysis on one core; with
+deviation 2 mV, 50 draws per cell). It takes several hours per analysis on one core; with
 `--jobs` and a computing cluster it is much faster.
 
 ### Step 3: tables
@@ -94,8 +95,9 @@ deviation 2 mV, 15 draws per cell). It takes several hours per analysis on one c
 python step3_tables.py
 ```
 
-Writes the rows of Table 2 and Tables S1-S7 to `output/tables/` as LaTeX, and the numbers
-behind Table 2 (`Table2_bias_last_RPT.csv`) and Table S7 as CSV.
+Writes the rows of Tables S1-S8 to `output/tables/` as LaTeX, and the numbers behind
+Table S6 as CSV. Lines starting with `%` in a rows file are notes (for example the averages
+quoted in the caption of Table S8), not table rows.
 
 ### Step 4: figures
 
@@ -105,6 +107,17 @@ python figures/fig_bias_modes.py 6    # or one figure
 ```
 
 Figures go to `output/figures/`.
+
+### Step 5: numbers in the text
+
+```bash
+python step5_text_numbers.py
+```
+
+Computes the numbers quoted in the text of the paper that are not read directly off a
+table or figure (for example the relative biases in the abstract), and writes them to
+`output/text_numbers.csv`, each with where it appears and the value as written in the paper.
+Run step 3 first.
 
 ## 4. What makes each table and figure
 
@@ -118,9 +131,12 @@ Figures go to `output/figures/`.
 | Fig. 6 | `figures/fig_bias_modes.py 6` | `results/P45B_discharge_2.5-4.2`, `results/P45B_discharge_3.0-4.2` |
 | Fig. 7 | `figures/fig_bias_modes.py 7` | `results/P45B_discharge_2.94-4.2`, `results/P45B_charge_2.94-4.2` |
 | Fig. S1 | `figures/figS1_peak_alignment.py` | the same two analyses as Fig. 7 |
+| Fig. S2 | `figures/figS2_current_partition.py` | reference curves, `results/P45B_discharge_2.94-4.2`, `results/P45B_charge_2.94-4.2`, P45B data |
 | Graphical abstract | `figures/graphical_abstract.py` | the analyses of Figs. 5-7, P45B data |
-| Table 2 | `step3_tables.py` (`table2`) | the six analyses of Figs. 5-7, with their Monte Carlo |
-| Tables S1-S7 | `step3_tables.py` (`table_s1` ... `table_s7`) | see the docstring of each function |
+| Table S7 | `step3_tables.py` (`table_s7`) | `results/P45B_discharge_2.94-4.2`, `results/P45B_charge_2.94-4.2` and the two transition-point swap analyses (`..._charge-split`, `..._discharge-split`) |
+| Table S8 | `step3_tables.py` (`table_s8`) | the three M50T analyses: uncorrected, IR-corrected (0.1 s) and `M50T_discharge_IR10s-corrected` |
+| Tables S1-S6 | `step3_tables.py` (`table_s1` ... `table_s6`) | see the docstring of each function |
+| Numbers in the text | `step5_text_numbers.py` | the results folder, the tables, and P45B and M50T data |
 
 ## 5. What is in the repository
 
@@ -128,8 +144,9 @@ Figures go to `output/figures/`.
 paths.py                 where the data are (edit if needed)
 step1_fit.py             fit every RPT of one or more analyses
 step2_monte_carlo.py     half-cell offset Monte Carlo
-step3_tables.py          Table 2 and Tables S1-S7
+step3_tables.py          Tables S1-S8
 step4_figures.py         all data figures
+step5_text_numbers.py    numbers quoted in the text
 phantom_dma/
   analyses.py            every analysis in the paper and its settings
   data.py                read the raw data files; pulse resistance; IR correction
@@ -150,7 +167,7 @@ One folder per analysis, for example `results/P45B_discharge_2.5-4.2/`:
 |---|---|
 | `cell1_summary.csv`, `cell2_summary.csv`, `summary.csv` | One row per RPT: fitted parameters, electrode and lithium capacities, degradation modes, fit quality |
 | `fits/cell1_RPT_000.npz`, ... | Measured and fitted voltage on the full-cell SOC grid, fitted parameters and transition point, for each RPT |
-| `cell1_mc.csv`, `cell2_mc.csv` | Every Monte Carlo draw (analyses with a Monte Carlo only) |
+| `cell1_mc.csv`, `cell2_mc.csv` | Every Monte Carlo draw |
 | `uncertainty.csv` | Mean of the two cells, half their range, Monte Carlo standard deviation and the two combined |
 
 The columns of `summary.csv` are described in `data_dictionary.csv` of the Zenodo record
@@ -161,7 +178,8 @@ Names used in the code:
 - `cell1`, `cell2`: the two cells of each type. For the LG M50T they are the cells called
   D and E in Kirkaldy et al.
 - RPT: for the P45B, the number of ageing cycles completed (0 to 500); for the LG M50T, the
-  test index of Kirkaldy et al. (0 to 15).
+  test index of Kirkaldy et al. The paper uses the even tests 0 to 14;
+  `results/M50T_discharge_uncorrected` also holds the odd tests and test 15.
 - `nu_NE`, `nu_PE` (stretch), `sigma_NE`, `sigma_PE` (shift), `phi_Si` (silicon share of the
   negative electrode): the five fitted parameters.
 - `LAM_PE_pct`, `LAM_NE_pct`, `LLI_pct`, `LAM_Si_pct`, `LAM_Gr_pct`: degradation modes in %
@@ -174,8 +192,15 @@ Names used in the code:
 - Figs. 2-4 also write the numbers they plot, as CSV files next to the figure.
 - Figs. 3 and 4 of the paper were drawn with matplotlib 3.10, the others with 3.11.
   Another version can place text a pixel differently; the data drawn are the same.
-- A fit with fewer trials (`n_trials` in `phantom_dma/analyses.py`) is faster but less robust.
-  The window screens use three trials and are indicative only, as stated in the SI.
+- Every analysis, the window screens included, uses ten optimiser trials per RPT and the
+  50-draw Monte Carlo, except `M50T_discharge_IR10s-corrected` (the 10 s resistance
+  sensitivity test of Section 4.4 and Table S8), which has nominal fits only.
+- The two transition-point swap analyses (`P45B_discharge_2.94-4.2_charge-split`,
+  `P45B_charge_2.94-4.2_discharge-split`) take the transition point of each RPT from the
+  fitted results of the other branch, so fit `P45B_charge_2.94-4.2` and
+  `P45B_discharge_2.94-4.2` first when refitting from scratch.
+- For windows that end below 4.2 V, the full-cell capacity is the capacity passed inside
+  the window. No analysis in the paper uses such a window.
 
 ## 7. Cite
 

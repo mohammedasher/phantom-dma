@@ -76,6 +76,12 @@ def m50t_curve(cell_name, rpt, ir_corrected=False):
     out = out.drop_duplicates(subset="SOC", keep="first").reset_index(drop=True)
     if ir_corrected:
         soc_pulse, r_ohm = m50t_resistance(cell_name, rpt)
+        if ir_corrected == "10s":
+            # Sensitivity test (Section 4.4, Table S8): a larger correction, with the resistance
+            # read 10 s into each C/2 pulse from rest instead of at 0.1 s. It includes part of
+            # the slow, history-dependent resistance, which does not transfer to the low-rate trace.
+            soc_r, ratio = m50t_resistance_ratio(cell_name, rpt, 10.0)
+            r_ohm = r_ohm * np.interp(soc_pulse, soc_r, ratio)
         out["V"] = out["V"].values + M50T_POCV_CURRENT_A * np.interp(out["SOC"].values, soc_pulse, r_ohm)
     return out
 
@@ -92,6 +98,29 @@ def r_inst(v, i, k, threshold=0.002):
     while j > 0 and abs(v[j - 1] - base) > threshold:
         j -= 1
     return abs(v[k] - v[j - 1]) / abs(i[k]) * 1000.0
+
+
+def m50t_resistance_ratio(cell_name, rpt, t_long=10.0):
+    """Ratio of the t_long (s) resistance to R_0.1s for each C/2 GITT pulse, SOC ascending.
+
+    Both use the same rest voltage (as in r_inst); the long value is read t_long seconds
+    after the current step. Returns (soc, ratio).
+    """
+    g = pd.read_csv(m50t_file(cell_name, rpt, "GITT"))
+    t, v, i, q = g.iloc[:, 0].values, g.iloc[:, 1].values, g.iloc[:, 2].values / 1000.0, g.iloc[:, 3].values
+    starts = np.where((i[1:] < -0.1) & (i[:-1] >= -0.1))[0] + 1
+    soc, ratio = [], []
+    for k in starts:
+        base = v[max(k - 20, 0):k - 2].mean() if k > 4 else v[k - 1]
+        j = k
+        while j > 0 and abs(v[j - 1] - base) > 0.002:
+            j -= 1
+        rest = v[j - 1]
+        m = min(np.searchsorted(t, t[k] + t_long), len(t) - 1)
+        soc.append(1 - q[k - 1] / q.max())
+        ratio.append((rest - v[m]) / (rest - v[k]))
+    order = np.argsort(soc)
+    return np.array(soc)[order], np.array(ratio)[order]
 
 
 def m50t_resistance(cell_name, rpt):

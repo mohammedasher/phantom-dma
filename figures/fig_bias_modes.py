@@ -1,9 +1,8 @@
 """Figs. 5-7: degradation modes for a reference and an alternative analysis.
 
 Each of six panels shows one quantity for both analyses against throughput,
-with a strip beneath giving the difference (alternative minus reference) in
-percentage points at every RPT. Open markers: the monotonicity constraint holds
-that mode at its bound in at least one cell. Throughput: measured for the LG M50T
+with a strip beneath giving the difference (alternative minus reference), in per cent of the
+beginning-of-life quantity, at every RPT. Throughput: measured for the LG M50T
 (Kirkaldy et al.), estimated for the P45B as cycles x twice the mean capacity.
 
 Error bars on the traces: combined uncertainty from uncertainty.csv where it
@@ -114,9 +113,7 @@ def make(n, results, out):
         ax.fill_between(x, a, b, color=SKY, alpha=0.40, lw=0, zorder=2)
         for vals, err, held, colour, ls, mk in ((a, ea, ha, NAVY, "-", "o"), (b, eb, hb, POOL, "--", "s")):
             ax.errorbar(x, vals, yerr=err, color=colour, lw=1.6, ls=ls, marker="none", elinewidth=1.0, capsize=2.0, zorder=5)
-            open_ = np.array([r in held.get(key, set()) for r in rpts])
-            ax.plot(x[~open_], vals[~open_], mk, color=colour, ms=3.0, zorder=6)
-            ax.plot(x[open_], vals[open_], mk, mfc="white", mec=colour, mew=0.9, ms=3.4, zorder=6)
+            ax.plot(x, vals, mk, color=colour, ms=3.0, zorder=6)
         ax.set_ylabel(ylab, fontsize=8.4, labelpad=2)
         ax.tick_params(labelsize=7.0, length=2.2, labelbottom=False)
         ax.spines[["top", "right"]].set_visible(False)
@@ -143,7 +140,7 @@ def make(n, results, out):
                     va="bottom" if di > 0 else "top", zorder=5)
         rs.set_ylim(-1.75 * lim, 1.75 * lim)
         rs.set_xlim(-0.055 * span, x[-1] + 0.06 * span)
-        rs.set_ylabel("Δ (pp)", fontsize=6.4, labelpad=2)
+        rs.set_ylabel("Δ (%)", fontsize=6.4, labelpad=2)
         rs.tick_params(labelsize=6.4, length=2.0)
         rs.set_yticks([])
         rs.spines[["top", "right", "left"]].set_visible(False)
@@ -158,7 +155,7 @@ def make(n, results, out):
                       labelspacing=0.22, borderpad=0.1)
     fig.savefig(out, dpi=300, facecolor="white")
     plt.close(fig)
-    print("wrote", out, "| last-RPT differences (pp):",
+    print("wrote", out, "| last-RPT differences (%):",
           {key: round(float(B[key].values[-1] - A[key].values[-1]), 2) for key, _ in MODES})
 
 

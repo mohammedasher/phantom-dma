@@ -51,7 +51,7 @@ def main():
         for i in pu:
             j = pm[np.argmin(np.abs(vv[pm] - vu[i]))]
             dv = 1000 * (vv[j] - vu[i])
-            ax.annotate(f"{dv:+.0f} mV", (vu[i], min(abs(icu[i]), 1.1 * top)), xytext=(0, 6),
+            ax.annotate(("0" if round(dv) == 0 else f"{dv:+.0f}") + " mV", (vu[i], min(abs(icu[i]), 1.1 * top)), xytext=(0, 6),
                         textcoords="offset points", ha="center", fontsize=6.5, color=NAVY)
         ax.set_ylim(0, 1.3 * top)
         ax.set_title(f"({'ab'[k]}) {label}: RMSE {rmse:.1f} mV", fontsize=8, loc="left")

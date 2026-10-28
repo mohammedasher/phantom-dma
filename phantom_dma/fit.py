@@ -1,11 +1,10 @@
 """Objective function and optimiser for one pOCV curve, and the ageing sequence.
 
 Objective function (Methods of the paper):
-  0.2 * RMSE(V) on one side of the transition point delta
-+ 0.8 * Huber RMSE(dV/dz) on the other side
-+ a one-sided quadratic penalty once the modelled voltage extremes miss the
-  measured ones by more than 30 mV.
-For discharge the voltage term is applied below delta; for charge, above it.
+  0.2 * RMSE(V) over the steep low-SOC end, up to the transition point delta
++ 0.8 * Huber RMSE(dV/dz) over the rest of the curve,
+on both branches. delta is placed just below the first dV/dz minimum above the steep
+low-SOC end, found at beginning of life and tracked through ageing.
 """
 import multiprocessing as mp
 import os
@@ -14,7 +13,7 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.optimize import differential_evolution
-from scipy.signal import savgol_filter
+from scipy.signal import find_peaks, savgol_filter
 
 from .model import reservoirs
 
@@ -31,10 +30,17 @@ INIT_CENTER = [0.8314, 0.9422, 0.0219, 0.0461, 0.1867]
 N_TRIALS = 10          # independent trials per RPT; the best (lowest RMSE) is kept
 Z_LO, Z_HI = 0.02, 0.98
 BIG_COST = 1e6
-ENDPOINT_TOL_V = 0.03
 # Optional speed-up: set the environment variable DMA_TRIAL_WORKERS to, say, 4 to run
 # four trials at once (Linux and macOS). The result is identical: each trial has its own seeds.
 TRIAL_WORKERS = int(os.environ.get("DMA_TRIAL_WORKERS", "1"))
+# Where the curve is split between the voltage term and the dV/dz term: the voltage term
+# covers the steep low-SOC end, up to 1 % of the window below the first dV/dz minimum above
+# it (after Karger et al., J. Power Sources 578 (2023) 233208). The minimum is found at the
+# first RPT and followed through the ageing sequence. Same rule on both branches.
+SPLIT_PROMINENCE_FIRST = 0.05   # dV/dz units; identifies the minimum at the first RPT
+SPLIT_PROMINENCE_TRACK = 0.005  # lower, so that a fading minimum is still followed
+SPLIT_TRACK_WINDOW = 0.05       # search +/- this much around the previous position
+SPLIT_OFFSET = 0.01             # the split lies this far below the minimum
 
 
 # ---------------------------------------------------------------- utilities
@@ -92,7 +98,8 @@ def prepare_window(curve, v_window, step=5, n_grid=500):
 
     curve: DataFrame with columns V, SOC (full-cell SOC, 1 = full) and Q (Ah).
     SOC is renormalised to [0, 1] over the retained slice, so a reduced window
-    is fitted on its own full-cell coordinate.
+    is fitted on its own full-cell coordinate, and the returned capacity is the
+    capacity passed inside the window.
     """
     df = curve.iloc[::step].copy()
     lo, hi = sorted(v_window)
@@ -102,31 +109,46 @@ def prepare_window(curve, v_window, step=5, n_grid=500):
     w = w.assign(SOC=(w["SOC"] - s_min) / (s_max - s_min))
     z = np.linspace(w["SOC"].min(), w["SOC"].max(), n_grid)
     u = interp1d(w["SOC"], w["V"], kind="linear", bounds_error=False, fill_value="extrapolate")(z)
-    return z, u, float(w["Q"].max())
+    # Full-cell capacity of the retained slice. Q is counted from the start of the branch,
+    # so the capacity inside the window is the difference between its ends.
+    return z, u, float(w["Q"].max() - w["Q"].min())
 
 
-def transition_point(z, u, direction):
-    """Transition point delta, kept 0.04 away from the ends of the curve.
-
-    On charge, delta is where the measured dV/dz is smallest. On discharge the
-    sign of dV/dz is reversed, so delta falls at the steepest point, the knee at
-    the low-SOC end.
-    """
+def _dvdz_minima(z, u, prominence, lo, hi):
     dvdz = _grad(_savgol(u, 11, 2)) / _grad(z)
-    metric = (-1.0 if direction == "discharge" else 1.0) * dvdz
-    mask = (z >= Z_LO) & (z <= Z_HI) & np.isfinite(metric)
-    delta = float(z[mask][np.nanargmin(metric[mask])])
-    return min(max(delta, Z_LO + 0.02), Z_HI - 0.02)
+    m = (z >= lo) & (z <= hi) & np.isfinite(dvdz)
+    idx, _ = find_peaks(-dvdz[m], prominence=prominence)
+    return z[m][idx]
 
 
-def term_masks(z, delta, direction):
-    """Voltage term on one side of delta, dV/dz term on the other."""
-    if direction == "discharge":
-        v_mask = (z >= Z_LO) & (z <= delta)
-        d_mask = (z >= delta) & (z <= 1.0)
-    else:
-        v_mask = (z >= delta) & (z <= Z_HI)
-        d_mask = (z >= Z_LO) & (z <= delta)
+def first_minimum_splits(prepared):
+    """Split position for each RPT, {rpt: delta}, from {rpt: (z, u, ...)} in ageing order.
+
+    At the first RPT: the first dV/dz minimum above the steep low-SOC end. At later RPTs:
+    the minimum nearest the previous position within SPLIT_TRACK_WINDOW, or the previous
+    position if the feature is no longer found. The split lies SPLIT_OFFSET below it and
+    never closer than 0.04 to the low end of the window.
+    """
+    lo_lim = Z_LO + 0.02
+    out, prev = {}, None
+    for rpt in sorted(prepared):
+        z, u = prepared[rpt][0], prepared[rpt][1]
+        if prev is None:
+            zz = _dvdz_minima(z, u, SPLIT_PROMINENCE_FIRST, lo_lim, 0.6)
+            prev = float(zz[0]) if len(zz) else lo_lim + SPLIT_OFFSET
+        else:
+            zz = _dvdz_minima(z, u, SPLIT_PROMINENCE_TRACK, max(lo_lim, prev - SPLIT_TRACK_WINDOW),
+                              prev + SPLIT_TRACK_WINDOW)
+            if len(zz):
+                prev = float(zz[np.argmin(np.abs(zz - prev))])
+        out[rpt] = max(prev - SPLIT_OFFSET, lo_lim)
+    return out
+
+
+def term_masks(z, delta):
+    """Voltage term below delta (the steep low-SOC end), dV/dz term above it."""
+    v_mask = (z >= Z_LO) & (z <= delta)
+    d_mask = (z >= delta) & (z <= 1.0)
     return v_mask, d_mask
 
 
@@ -151,10 +173,9 @@ def feasible(theta, z, q_fc=None, q_ref=None, tol=1.002):
 
 
 # --------------------------------------------------------------- objective
-def make_objective(model, z, u, direction, delta, q_fc=None, q_ref=None, tol=1.002):
+def make_objective(model, z, u, delta, q_fc=None, q_ref=None, tol=1.002):
     u_s = _savgol(u, 11, 2)
-    u_min, u_max = np.nanmin(u), np.nanmax(u)
-    v_mask, d_mask = term_masks(z, delta, direction)
+    v_mask, d_mask = term_masks(z, delta)
     enough = v_mask.sum() >= 6 and d_mask.sum() >= 6
     z_d = z[d_mask]
     dz = _grad(z_d)
@@ -169,14 +190,11 @@ def make_objective(model, z, u, direction, delta, q_fc=None, q_ref=None, tol=1.0
             return BIG_COST
         if v_model is None or np.any(~np.isfinite(v_model)):
             return BIG_COST
-        miss_lo = abs(np.nanmin(v_model) - u_min)
-        miss_hi = abs(np.nanmax(v_model) - u_max)
-        penalty = 5000.0 * (max(0.0, miss_lo - ENDPOINT_TOL_V) ** 2 + max(0.0, miss_hi - ENDPOINT_TOL_V) ** 2)
         rmse_v = _rmse(u_s[v_mask], v_model[v_mask])
         dvdz_model = _average_duplicates(z_d, _savgol(v_model[d_mask], 11, 2, 1) / dz, z_d)
         if np.any(~np.isfinite(dvdz_model)):
             return BIG_COST
-        return 0.2 * rmse_v + 0.8 * _huber_rmse(dvdz_meas, dvdz_model) + penalty
+        return 0.2 * rmse_v + 0.8 * _huber_rmse(dvdz_meas, dvdz_model)
 
     return cost
 
@@ -212,14 +230,14 @@ def _initial_population(center, size, spread, seed):
 # ------------------------------------------------------------------ fitting
 def fit_curve(model, z, u, q_fc, direction, center, q_ref=None, tol=1.002,
               n_trials=N_TRIALS, pop_size=80, spread=0.10, maxiter=800, seed_offset=(3, 7),
-              dvdz_whole_curve=False):
-    """Fit one curve from n_trials seeded differential-evolution runs; keep the lowest RMSE."""
-    delta = transition_point(z, u, direction)
-    if dvdz_whole_curve:
-        # Check in the SI only: put delta at the end that gives the dV/dz term the
-        # whole curve, as happens on discharge.
-        delta = Z_LO + 0.02 if direction == "discharge" else Z_HI - 0.02
-    cost = make_objective(model, z, u, direction, delta, q_fc, q_ref, tol)
+              delta=None):
+    """Fit one curve from n_trials seeded differential-evolution runs; keep the lowest RMSE.
+
+    delta: split position, from first_minimum_splits (or from another analysis for the
+    transition-point swap test). The voltage term lies below it on either branch.
+    """
+    delta = float(delta)
+    cost = make_objective(model, z, u, delta, q_fc, q_ref, tol)
     global _TRIAL_CTX
     _TRIAL_CTX = (cost, np.asarray(center, float), pop_size, spread, maxiter, seed_offset, list(BOUNDS))
     if TRIAL_WORKERS > 1 and n_trials > 1:
@@ -248,18 +266,22 @@ def _run_trial(k):
     return res.x
 
 
-def fit_sequence(model, curves, direction, v_window, n_trials=N_TRIALS, log=print, dvdz_whole_curve=False):
+def fit_sequence(model, curves, direction, v_window, n_trials=N_TRIALS, log=print, splits=None):
     """Fit an ageing sequence {rpt: curve}, warm-starting each RPT from the previous one.
 
     The first RPT is the beginning-of-life reference. If the monotonicity bound
     is active at an RPT, that RPT is refitted with the hard bound (tol = 1.0).
+    splits, if given, maps RPT -> transition point and replaces the first-minimum rule.
     Returns a DataFrame with parameters, reservoirs and fit quality per RPT.
     """
     rows, center, q_ref, arrays = [], INIT_CENTER, None, {}
+    prepared = {rpt: prepare_window(curves[rpt], v_window) for rpt in sorted(curves)}
+    if splits is None:  # given explicitly only for the transition-point swap test
+        splits = first_minimum_splits(prepared)
     for rpt in sorted(curves):
-        z, u, q_fc = prepare_window(curves[rpt], v_window)
+        z, u, q_fc = prepared[rpt]
         theta, q, delta = fit_curve(model, z, u, q_fc, direction, center, q_ref, 1.002, n_trials,
-                                    dvdz_whole_curve=dvdz_whole_curve)
+                                    delta=splits[rpt])
         r = reservoirs(theta, q_fc)
         hit = []
         if q_ref is not None:
@@ -268,7 +290,7 @@ def fit_sequence(model, curves, direction, v_window, n_trials=N_TRIALS, log=prin
                     hit.append(name)
             if hit:
                 theta, q, delta = fit_curve(model, z, u, q_fc, direction, center, q_ref, 1.0, n_trials,
-                                            dvdz_whole_curve=dvdz_whole_curve)
+                                            delta=splits[rpt])
                 r = reservoirs(theta, q_fc)
         center = list(theta)
         if q_ref is None:

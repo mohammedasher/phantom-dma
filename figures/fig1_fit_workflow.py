@@ -82,7 +82,10 @@ def main():
     s_dv = np.r_[np.hypot(v_sd[0], v_sd[1]) / (zc[1] - zc[0]),
                  np.hypot(v_sd[:-2], v_sd[2:]) / (zc[2:] - zc[:-2]),
                  np.hypot(v_sd[-2], v_sd[-1]) / (zc[-1] - zc[-2])]
-    rmse = 1000 * np.sqrt(np.mean((fit["U_exp"] - v_mod) ** 2))
+    # same definition as Tables S1 and S4 (fit.fit_quality): smoothed data, 0.02 <= z <= 0.98
+    from phantom_dma import fit as _fit
+    _m = (fit["z"] >= _fit.Z_LO) & (fit["z"] <= _fit.Z_HI)
+    rmse = 1000 * np.sqrt(np.mean((_fit._savgol(fit["U_exp"], 11, 2)[_m] - v_mod[_m]) ** 2))
 
     fig, ax = plt.subplots(2, 2, figsize=(6.0, 4.5), dpi=300)
     fig.subplots_adjust(left=0.095, right=0.985, top=0.945, bottom=0.095, wspace=0.28, hspace=0.32)
